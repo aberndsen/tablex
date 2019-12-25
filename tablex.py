@@ -149,10 +149,25 @@ def create_graph_row():
     ])
     return children
 
+def create_e_filter_rows():
+
+    row = html.Div([
+        dcc.RadioItems(
+            id='do-AoverE',
+            options=[{"label": opt, 'value': opt} for opt in ['No', 'Yes']],
+            value='No',
+            labelStyle={'display': 'inline-block'}
+        )
+    ])
+    return row
 
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
+    f"Cohort filters for Actuals",
     create_filter_rows(),
+    dr.Row(
+        children=create_e_filter_rows()
+    ),
     create_graph_row()
 ])
 
@@ -250,7 +265,8 @@ def update_main_on_filter_change(
             z=surface.values,
             x=surface.index,
             y=surface.columns,
-            yaxis='y')
+            colorscale='viridis')
+
     main_graph = {
         'data': [this_graph],
         'layout': go.Layout(
@@ -329,9 +345,11 @@ def update_slices_on_filter_change(
     #
     # Issue Age (xaxis) slice through fixed Duration (yaxis)
     #
-    if x_val is None:
+    if y_val is None:
         xslice = dff.groupby(xaxis)[zaxis].mean()
     else:
+        if y_val not in dff[yaxis].unique():
+            y_val = int(y_val)  # deal with heatmap coordinates
         xslice = dff[dff[yaxis] == y_val].groupby(xaxis)[zaxis].mean()
     xslice_graph = create_slice(
         x=xslice.index,
@@ -346,9 +364,11 @@ def update_slices_on_filter_change(
     #
     # Duration slice (yaxis) through fixed Issue Age (xaxis)
     #
-    if y_val is None:
+    if x_val is None:
         yslice = dff.groupby(yaxis)[zaxis].mean()
     else:
+        if x_val not in dff[xaxis].unique():
+            x_val = int(x_val)  # deal with heatmap coordinates
         yslice = dff[dff[xaxis] == x_val].groupby(yaxis)[zaxis].mean()
     yslice_graph = create_slice(
         x=yslice.index,
