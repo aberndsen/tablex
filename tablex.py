@@ -41,26 +41,30 @@ feature_cols = []
 
 
 def load_and_filter_data(
-        col0_filter=None,
-        col1_filter=None,
-        col2_filter=None,
-        col3_filter=None,
-        col4_filter=None,
-        col5_filter=None,
+        feature_filters=None,
         x_val=None,
         y_val=None):
-    dff = df
-    for feat_num, feat_filter in enumerate(
-            [col0_filter, col1_filter, col2_filter, col3_filter, col4_filter, col5_filter]):
-        if feat_filter is not None:
-            if not isinstance(feat_filter, (list, tuple)):
-                feat_filter = [feat_filter]
-            if len(feat_filter):
-                keepers = dff[feature_cols[feat_num]].isin(feat_filter)
-                dff = dff[keepers]
+    """Filter the global df DataFrame.
 
-    if dff is None:
-        dff = df
+    Parameters
+    ----------
+    feature_filters: dict
+       - key = column name
+       - value = list
+    x_val : int
+       Filter the data on `xaxis` == x_val
+    y_val : int
+       Filter the data on `yaxis` == y_val.
+
+    Returns
+    -------
+    DataFrame
+
+    """ 
+    dff = df
+    for feature_name, feature_filter in (feature_filters or {}).items():
+        keepers = dff[feature_name].isin(feature_filter)
+        dff = dff[keepers]
 
     if x_val is not None:
         dff = dff[dff[xaxis] == x_val]
@@ -70,7 +74,7 @@ def load_and_filter_data(
     return dff
 
 
-def create_filter_rows():
+def create_filter_rows(suffix='', disabled=False):
     """Create a Dropdown filter for each column.
 
     These are the fields (columns) that define a unique cohort.
@@ -86,11 +90,12 @@ def create_filter_rows():
     cols_per_row = 3
     rows = []
     this_row = []
-    for feat_num in range(MAX_FEATURE_COLS):
+    for feature_num in range(MAX_FEATURE_COLS):
         this_dropdown = dcc.Dropdown(
-            id=f'col{feat_num}-dropdown',
+            id=f'col{feature_num}-dropdown{suffix}',
             multi=True,
-            style={'display': 'none'}            
+            style={'display': 'none'},
+            disabled=disabled
         )
 
         #this_filter = dr.Column(
@@ -101,7 +106,7 @@ def create_filter_rows():
             width=12 // cols_per_row,
             text='',
             value=this_dropdown,
-            id_value=f'col{feat_num}-indicator'
+            id_value=f'col{feature_num}-indicator{suffix}'
         )
         this_row.append(this_filter)
         if len(this_row) % (cols_per_row) == cols_per_row - 1:
@@ -150,47 +155,88 @@ def create_graph_row():
     return children
 
 def create_e_filter_rows():
-
-    row = html.Div([
+    """Elements for the denominator filter row"""
+    row = [
         dcc.RadioItems(
-            id='do-AoverE',
+            id='do-a-over-e',
             options=[{"label": opt, 'value': opt} for opt in ['No', 'Yes']],
             value='No',
-            labelStyle={'display': 'inline-block'}
-        )
-    ])
-    return row
+            labelStyle={'display': 'inline-block'})
+    ]
+    row.extend(create_filter_rows(suffix='-denom', disabled=True).children)
+
+    return html.Div(row)
+
 
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
-    f"Cohort filters for Actuals",
+
+    html.H3("Cohort filters for Actuals"),
+    dcc.Store(id='num-filter-store'),
     create_filter_rows(),
+
+    html.Hr(),
+    html.H3("Cohort filters for Denominator (if applicable)"),
+    dcc.Store(id='denom-filter-store'),
     dr.Row(
         children=create_e_filter_rows()
     ),
+
+    html.Hr(),
     create_graph_row()
 ])
 
 
 @app.callback(
-    [Output('col0-dropdown', 'options'),
-     Output('col1-dropdown', 'options'),
-     Output('col2-dropdown', 'options'),
-     Output('col3-dropdown', 'options'),
-     Output('col4-dropdown', 'options'),
-     Output('col5-dropdown', 'options'),
-     Output('col0-dropdown', 'style'),
-     Output('col1-dropdown', 'style'),
-     Output('col2-dropdown', 'style'),
-     Output('col3-dropdown', 'style'),
-     Output('col4-dropdown', 'style'),
-     Output('col5-dropdown', 'style'),
-     Output('col0-indicator-text', 'children'),
-     Output('col1-indicator-text', 'children'),
-     Output('col2-indicator-text', 'children'),
-     Output('col3-indicator-text', 'children'),
-     Output('col4-indicator-text', 'children'),
-     Output('col5-indicator-text', 'children')],
+    Output('num-filter-store', 'data'),
+    [Input(f'col{num}-dropdown', 'value') for num in range(MAX_FEATURE_COLS)])
+def update_num_store(*col_args):
+    """Update the filters on the numerator."""
+    store = {}
+    for feature_num, feature_filter in enumerate(col_args):
+        if feature_filter is not None:
+            if not isinstance(feature_filter, (list, tuple)):
+                feature_filter = [feature_filter]
+            store[feature_cols[feature_num]] = feature_filter
+    return store
+
+
+@app.callback(
+    Output('denom-filter-store', 'data'),
+    [Input(f'col{num}-dropdown-denom', 'value') for num in range(MAX_FEATURE_COLS)])
+def update_num_store(*col_args):
+    """Update the filters on the denomerator."""
+    store = {}
+    for feature_num, feature_filter in enumerate(col_args):
+        if feature_filter is not None:
+            if not isinstance(feature_filter, (list, tuple)):
+                feature_filter = [feature_filter]
+            store[feature_cols[feature_num]] = feature_filter
+    return store
+
+
+@app.callback(
+    [Output('col0-dropdown-denom', 'disabled'),
+     Output('col1-dropdown-denom', 'disabled'),
+     Output('col2-dropdown-denom', 'disabled'),
+     Output('col3-dropdown-denom', 'disabled'),
+     Output('col4-dropdown-denom', 'disabled'),
+     Output('col5-dropdown-denom', 'disabled')],
+    [Input('do-a-over-e', 'value')])
+def enable_denom_filters(do_aoe):
+    if do_aoe == 'Yes':
+        to_ret = [False] * MAX_FEATURE_COLS
+    else:
+        to_ret = [True] * MAX_FEATURE_COLS
+    return to_ret
+
+@app.callback(
+    [Output(f'col{num}-dropdown', 'options') for num in range(MAX_FEATURE_COLS)]
+    + [Output(f'col{num}-dropdown', 'style') for num in range(MAX_FEATURE_COLS)]
+    + [Output(f'col{num}-indicator-text', 'children') for num in range(MAX_FEATURE_COLS)]
+    + [Output(f'col{num}-dropdown-denom', 'options') for num in range(MAX_FEATURE_COLS)]
+    + [Output(f'col{num}-dropdown-denom', 'style') for num in range(MAX_FEATURE_COLS)]
+    + [Output(f'col{num}-indicator-denom-text', 'children') for num in range(MAX_FEATURE_COLS)],
     [Input('url', 'href')])
 def init_filter_options(href):
     """Initialize the filter options."""
@@ -198,38 +244,32 @@ def init_filter_options(href):
     options = []
     styles = []
     children = []
-    for feat_num, feat_col in enumerate(feature_cols):
+    for feature_num, feature_name in enumerate(feature_cols):
         these_options = [{'value': opt, 'label': opt}
-                         for opt in sorted(dff[feat_col].unique())]
+                         for opt in sorted(dff[feature_name].unique())]
         options.append(these_options)
         styles.append(None)
-        children.append(f"{feat_col}")
+        children.append(f"{feature_name}")
 
     for empty_opts in range(len(feature_cols), MAX_FEATURE_COLS):
         options.append([])
         styles.append({'display': 'none'})
         children.append(f"")
 
-    return options + styles + children
+    return options + styles + children + options + styles + children
 
 
 @app.callback(
     [Output('main-graph', 'figure'),
      Output('main-graph', 'clickData')],
-    [Input('col0-dropdown', 'value'),
-     Input('col1-dropdown', 'value'),
-     Input('col2-dropdown', 'value'),
-     Input('col3-dropdown', 'value'),
-     Input('col4-dropdown', 'value'),
-     Input('col5-dropdown', 'value'),
+    [Input('num-filter-store', 'data'),
+     Input('denom-filter-store', 'data'),
+     Input('do-a-over-e', 'value'),
      Input('main-graph-type', 'value')])
 def update_main_on_filter_change(
-        col0_filter,
-        col1_filter,
-        col2_filter,
-        col3_filter,
-        col4_filter,
-        col5_filter,
+        num_filters,
+        denom_filters,
+        do_aoe,
         graph_type):
     """Update all the plots on any change in filters.
     
@@ -240,17 +280,23 @@ def update_main_on_filter_change(
 
     We have separate callbacks to update the slices when the main surface plot is clicked.
 
-    """
-    dff = load_and_filter_data(
-        col0_filter, col1_filter, col2_filter, col3_filter, col4_filter, col5_filter)
+    """    
+    dff = load_and_filter_data(feature_filters=num_filters)
 
     if dff is None:
         return {'data': []}
 
-    #ipdb.set_trace()
-
     dff_pivot = dff.set_index(feature_cols + [xaxis])[[yaxis, zaxis]].pivot(columns=yaxis)[zaxis]
     surface = dff_pivot.mean(level=-1) # average over all but the last level (all features)
+
+    if do_aoe == 'Yes':
+        dff_denom = load_and_filter_data(feature_filters=denom_filters)
+        if len(dff_denom):
+            dff_pivot_denom = dff_denom.set_index(
+                feature_cols + [xaxis])[[yaxis, zaxis]].pivot(columns=yaxis)[zaxis]
+            surface_denom = dff_pivot_denom.mean(level=-1)
+            surface = surface.divide(surface_denom)
+    
     if graph_type == 'Surface':
         this_graph = go.Surface(
             z=surface.values,
@@ -297,20 +343,14 @@ def update_main_on_filter_change(
     [Output('x-slice', 'figure'),
      Output('y-slice', 'figure'),
      Output('xy-slice', 'figure')],
-    [Input('col0-dropdown', 'value'),
-     Input('col1-dropdown', 'value'),
-     Input('col2-dropdown', 'value'),
-     Input('col3-dropdown', 'value'),
-     Input('col4-dropdown', 'value'),
-     Input('col5-dropdown', 'value'),
+    [Input('num-filter-store', 'data'),
+     Input('denom-filter-store', 'data'),
+     Input('do-a-over-e', 'value'),
      Input('main-graph', 'clickData')])
 def update_slices_on_filter_change(
-        col0_filter,
-        col1_filter,
-        col2_filter,
-        col3_filter,
-        col4_filter,
-        col5_filter,
+        num_filters,
+        denom_filters,
+        do_aoe,
         clickData):
     """Update all the plots on any change in filters.
     
@@ -336,11 +376,13 @@ def update_slices_on_filter_change(
         yslice_title = f"Average over all '{xaxis}'"
         xyslice_title = f"Average over all '{xaxis}', '{yaxis}'"
 
-    dff = load_and_filter_data(
-        col0_filter, col1_filter, col2_filter, col3_filter, col4_filter, col5_filter)
+    dff = load_and_filter_data(feature_filters=num_filters)
 
     if dff is None:
         return {'data': []}
+
+    if do_aoe == 'Yes':
+        dff_denom = load_and_filter_data(feature_filters=denom_filters)
 
     #
     # Issue Age (xaxis) slice through fixed Duration (yaxis)
@@ -351,6 +393,16 @@ def update_slices_on_filter_change(
         if y_val not in dff[yaxis].unique():
             y_val = int(y_val)  # deal with heatmap coordinates
         xslice = dff[dff[yaxis] == y_val].groupby(xaxis)[zaxis].mean()
+
+    if do_aoe == 'Yes':
+        if y_val is None:
+            xslice_denom = dff_denom.groupby(xaxis)[zaxis].mean()
+        else:
+            if y_val not in dff[yaxis].unique():
+                y_val = int(y_val)  # deal with heatmap coordinates
+            xslice_denom = dff_denom[dff_denom[yaxis] == y_val].groupby(xaxis)[zaxis].mean()
+        xslice = xslice.divide(xslice_denom)
+        
     xslice_graph = create_slice(
         x=xslice.index,
         y=xslice.values,
@@ -370,6 +422,16 @@ def update_slices_on_filter_change(
         if x_val not in dff[xaxis].unique():
             x_val = int(x_val)  # deal with heatmap coordinates
         yslice = dff[dff[xaxis] == x_val].groupby(yaxis)[zaxis].mean()
+
+    if do_aoe == 'Yes':
+        if x_val is None:
+            yslice_denom = dff_denom.groupby(yaxis)[zaxis].mean()
+        else:
+            if x_val not in dff_denom[xaxis].unique():
+                x_val = int(x_val)  # deal with heatmap coordinates
+            yslice_denom = dff_denom[dff_denom[xaxis] == x_val].groupby(yaxis)[zaxis].mean()
+        yslice = yslice.divide(yslice_denom)
+
     yslice_graph = create_slice(
         x=yslice.index,
         y=yslice.values,
@@ -390,6 +452,14 @@ def update_slices_on_filter_change(
     else:
         xyslice = dff.groupby(aa_col)[zaxis].mean()
         xtitle = f'{aa_col}'
+    if do_aoe == 'Yes':
+        if (x_val is not None) and (y_val is not None):
+            xy_val = x_val + y_val
+            xyslice_denom = dff_denom[dff_denom[aa_col] == xy_val].groupby(xaxis)[zaxis].mean()
+        else:
+            xyslice_denom = dff_denom.groupby(aa_col)[zaxis].mean()
+        xyslice = xyslice.divide(xyslice_denom)
+
     xyslice_graph = create_slice(
         x=xyslice.index,
         y=xyslice.values,
