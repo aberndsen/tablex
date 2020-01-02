@@ -623,6 +623,7 @@ def create_slice(x, y, title, layout_kwargs=None):
     if layout is not None:
         layout.update(layout_kwargs)
 
+    ymean = y.mean().round(3)
     return {
         'data': [
             {
@@ -635,9 +636,9 @@ def create_slice(x, y, title, layout_kwargs=None):
             # add a line showing the mean
             {
                 'x': x,
-                'y': [y.mean().round(3)] * len(y),
+                'y': [ymean] * len(y),
                 'mode': 'lines',
-                'name': 'mean'
+                'name': f'<{title}>'
             }
         ],
         'layout': layout
