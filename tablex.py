@@ -1,4 +1,19 @@
-import ipdb
+"""
+A table explorer.
+
+This dashboard is meant to display tabular data:
+zaxis = zaxis(xaxis, yaxis)
+
+As such, the data should have three columns. If, however,
+your data has feature or descriptive columns, those are used
+as filters so you can explore the behaviour within that feature-
+selection.
+
+If features are present but none are applied, the dashboard
+takes the average zaxis quantity over those features.
+
+"""
+
 import argparse
 import dash
 import re
@@ -9,17 +24,16 @@ import pandas as pd
 
 import plotly.graph_objects as go
 
-from dash.dependencies import Input, Output, State
-
-from datetime import datetime as dt
-
+from dash.dependencies import Input, Output
 
 #
-# Number of columns that are not Issue Age (xaxis), Duration (yaxis) or qx (zaxis)
+# Number of columns that are not:
+# Issue Age (xaxis), Duration (yaxis) or qx (zaxis)
 #
 MAX_FEATURE_COLS = 6
 
 MAIN_HEIGHT = 600
+SLICE_HEIGHT = 220
 
 #
 # Attained Age alias columns, otherwise calculate
@@ -62,7 +76,7 @@ def load_and_filter_data(
     -------
     DataFrame
 
-    """ 
+    """
     dff = df
     for feature_name, feature_filter in (feature_filters or {}).items():
         keepers = dff[feature_name].isin(feature_filter)
@@ -85,7 +99,6 @@ def description_card():
         id="description-card",
         children=[
             html.H5("ESU's Table Explorer"),
-            #html.H3("Welcome to ESU's cohort explorer Dashboard."),
             html.Div(
                 id="intro",
                 children=(
@@ -94,11 +107,12 @@ def description_card():
                     "to segment your population. Click on the surface plot or "
                     "heatmap to visualize behaviour at different time points. "
                     "Finally, look at relative behaviour by enabling the "
-                    "denominator (expected) and filtering on a baseline cohort.")
-                ,
+                    "denominator (expected) and filtering on a baseline "
+                    "cohort.")
             ),
         ],
     )
+
 
 def filter_div(base_id):
     """A standard set of elements for filtering the data.
@@ -121,15 +135,16 @@ def filter_div(base_id):
         ],
         style={'display': 'none'}
     )
-            
+
 
 def generate_filters(prefix=''):
     """
 
     :return: A Div containing controls for numerator data.
     """
-    children = [filter_div(f'{prefix}col{num}') for num in range(MAX_FEATURE_COLS)]
-                
+    children = [filter_div(f'{prefix}col{num}')
+                for num in range(MAX_FEATURE_COLS)]
+
     return html.Div(
         id=f"{prefix}control-card",
         children=children
@@ -162,13 +177,14 @@ def create_slice_layout(baseid):
             className='ten columns'
         ),
         html.Div(
-            [text_box('Maximum', '', f'{baseid}-max'), text_box('Minimum', '', f'{baseid}-min')],
+            [text_box('Maximum', '', f'{baseid}-max'),
+             text_box('Minimum', '', f'{baseid}-min')],
             className='two columns'
         )],
         className='pretty-container'
     )
 
-        
+
 def create_graph_rows():
     """Create the Graph's after the Filter row has been initialized."""
     children = [
@@ -183,7 +199,8 @@ def create_graph_rows():
                 dcc.RadioItems(
                     id='main-graph-type',
                     options=[
-                        {'label': ctype, 'value': ctype} for ctype in ['Heatmap', 'Surface']
+                        {'label': ctype, 'value': ctype}
+                        for ctype in ['Heatmap', 'Surface']
                     ],
                     value='Surface',
                     labelStyle={'display': 'inline-block'}
@@ -193,9 +210,8 @@ def create_graph_rows():
                         id='main-graph',
                         style={"height": "600px", "width": "100%"},
                     )
-                ),
-            ],
-            className='pretty-container')],
+                )],
+                className='pretty-container')],
             className='row'),
 
         #
@@ -230,9 +246,7 @@ app.layout = html.Div(
             id="left-column",
             className="three columns pretty_container",
             children=[
-                #description_card(),
 
-                #html.Hr(),
                 # Filters for the numerators
                 dcc.Store(id='num-filter-store'),
                 html.H5('Filters on Actuals'),
@@ -265,11 +279,16 @@ app.layout = html.Div(
 
 
 @app.callback(
-    [Output(f'col{num}-dropdown', 'options') for num in range(MAX_FEATURE_COLS)]
-    + [Output(f'col{num}-div', 'style') for num in range(MAX_FEATURE_COLS)]
-    + [Output(f'col{num}-title', 'children') for num in range(MAX_FEATURE_COLS)]
-    + [Output(f'denom-col{num}-dropdown', 'options') for num in range(MAX_FEATURE_COLS)]
-    + [Output(f'denom-col{num}-title', 'children') for num in range(MAX_FEATURE_COLS)],
+    [Output(f'col{num}-dropdown', 'options')
+     for num in range(MAX_FEATURE_COLS)]
+    + [Output(f'col{num}-div', 'style')
+       for num in range(MAX_FEATURE_COLS)]
+    + [Output(f'col{num}-title', 'children')
+       for num in range(MAX_FEATURE_COLS)]
+    + [Output(f'denom-col{num}-dropdown', 'options')
+       for num in range(MAX_FEATURE_COLS)]
+    + [Output(f'denom-col{num}-title', 'children')
+       for num in range(MAX_FEATURE_COLS)],
     [Input('url', 'href')])
 def init_filter_options(href):
     """Initialize the filter options."""
@@ -291,6 +310,7 @@ def init_filter_options(href):
 
     return options + styles + children + options + children
 
+
 @app.callback(
     [Output('main-graph', 'figure'),
      Output('main-average-value', 'children'),
@@ -307,31 +327,39 @@ def update_main_on_filter_change(
         do_aoe,
         graph_type):
     """Update all the plots on any change in filters.
-    
+
     If any features remain, we average over those to produce the
     z(x, y) grid.
 
-    We also render the slices here, but they are the marginal-averages over those dimensions.
+    We also render the slices here, but they are the
+    marginal-averages over those dimensions.
 
-    We have separate callbacks to update the slices when the main surface plot is clicked.
+    We have separate callbacks to update the slices
+    when the main surface plot is clicked.
 
-    """    
+    """
     dff = load_and_filter_data(feature_filters=num_filters)
 
     if dff is None:
         return {'data': []}
 
-    dff_pivot = dff.set_index(feature_cols + [xaxis])[[yaxis, zaxis]].pivot(columns=yaxis)[zaxis]
-    surface = dff_pivot.mean(level=-1) # average over all but the last level (all features)
+    dff_pivot = dff.set_index(feature_cols + [xaxis])[[yaxis, zaxis]]
+    dff_pivot = dff_pivot.pivot(columns=yaxis)[zaxis]
+
+    # average over all but the last level (all features)
+    surface = dff_pivot.mean(level=-1)
 
     if do_aoe == ['Enable']:
         dff_denom = load_and_filter_data(feature_filters=denom_filters)
         if len(dff_denom):
             dff_pivot_denom = dff_denom.set_index(
-                feature_cols + [xaxis])[[yaxis, zaxis]].pivot(columns=yaxis)[zaxis]
+                feature_cols + [xaxis])[[yaxis, zaxis]]
+            dff_pivot_denom = dff_pivot_denom.pivot(
+                    columns=yaxis)[zaxis]
+
             surface_denom = dff_pivot_denom.mean(level=-1)
             surface = surface.divide(surface_denom)
-    
+
     if graph_type == 'Surface':
         this_graph = go.Surface(
             z=surface.values,
@@ -347,7 +375,7 @@ def update_main_on_filter_change(
             x=surface.index,
             y=surface.columns,
             colorscale='viridis')
-        
+
     main_graph = {
         'data': [this_graph],
         'layout': go.Layout(
@@ -377,7 +405,6 @@ def update_main_on_filter_change(
             reset_clicked)
 
 
-
 @app.callback(
     Output('num-filter-store', 'data'),
     [Input(f'col{num}-dropdown', 'value') for num in range(MAX_FEATURE_COLS)])
@@ -394,7 +421,8 @@ def update_num_store(*col_args):
 
 @app.callback(
     Output('denom-filter-store', 'data'),
-    [Input(f'denom-col{num}-dropdown', 'value') for num in range(MAX_FEATURE_COLS)])
+    [Input(f'denom-col{num}-dropdown', 'value')
+     for num in range(MAX_FEATURE_COLS)])
 def update_denom_store(*col_args):
     """Update the filters on the denomerator."""
     store = {}
@@ -406,29 +434,38 @@ def update_denom_store(*col_args):
     return store
 
 
-
 @app.callback(
     [Output('x-slice-header', 'children'),
      Output('y-slice-header', 'children'),
      Output('xy-slice-header', 'children')],
     [Input('main-graph', 'clickData')])
-def update_slices_on_filter_change(clickData):
+def update_slice_headers_on_filter_change(clickData):
     """Update the slice headers."""
     try:
         x_val = clickData['points'][0].get('x')
         y_val = clickData['points'][0].get('y')
         xslice_header = html.B(f'{zaxis}({xaxis} | {yaxis} = {y_val})')
         yslice_header = html.B(f'{zaxis}({yaxis} | {xaxis} = {x_val})')
-        xyslice_header = html.B(f'{zaxis}({xaxis} | {aa_col} = {x_val + y_val})')
+        xyslice_header = html.B(
+            f'{zaxis}({xaxis} | {aa_col} = {x_val + y_val})'
+        )
     except(TypeError, IndexError):
         # No point selected: a new feature was added/removed.
         x_val = None
         y_val = None
-        xslice_header = [html.B(f"{zaxis}({xaxis})"), f" averaged over all '{yaxis}'"]
-        yslice_header = [html.B(f"{zaxis}({yaxis})"), f" averaged over all '{xaxis}'"]
-        xyslice_header = [html.B(f"{zaxis}({xaxis})"), f"  averaged over all '{xaxis}' + '{yaxis}'"]
+        xslice_header = [
+            html.B(f"{zaxis}({xaxis})"), f" averaged over all '{yaxis}'"
+        ]
+        yslice_header = [
+            html.B(f"{zaxis}({yaxis})"), f" averaged over all '{xaxis}'"
+        ]
+        xyslice_header = [
+            html.B(f"{zaxis}({xaxis})"),
+            f"  averaged over all '{xaxis}' + '{yaxis}'"
+        ]
 
     return xslice_header, yslice_header, xyslice_header
+
 
 @app.callback(
     [Output('x-slice', 'figure'),
@@ -439,25 +476,26 @@ def update_slices_on_filter_change(clickData):
      Output('y-slice-max-value', 'children'),
      Output('xy-slice', 'figure'),
      Output('xy-slice-min-value', 'children'),
-     Output('xy-slice-max-value', 'children'),
-    ],
+     Output('xy-slice-max-value', 'children')],
     [Input('num-filter-store', 'data'),
      Input('denom-filter-store', 'data'),
      Input('do-a-over-e', 'value'),
      Input('main-graph', 'clickData')])
-def update_slices_on_filter_change(
+def update_slice_indicators_on_filter_change(
         num_filters,
         denom_filters,
         do_aoe,
         clickData):
     """Update all the plots on any change in filters.
-    
+
     If any features remain, we average over those to produce the
     z(x, y) grid.
 
-    We also render the slices here, but they are the marginal-averages over those dimensions.
+    We also render the slices here, but they are the
+    marginal-averages over those dimensions.
 
-    We have separate callbacks to update the slices when the main surface plot is clicked.
+    We have separate callbacks to update the slices when
+    the main surface plot is clicked.
 
     """
     try:
@@ -492,9 +530,10 @@ def update_slices_on_filter_change(
         else:
             if y_val not in dff[yaxis].unique():
                 y_val = int(y_val)  # deal with heatmap coordinates
-            xslice_denom = dff_denom[dff_denom[yaxis] == y_val].groupby(xaxis)[zaxis].mean()
+            xslice_denom = dff_denom[dff_denom[yaxis] == y_val]
+            xslice_denom = xslice_denom.groupby(xaxis)[zaxis].mean()
         xslice = xslice.divide(xslice_denom)
-        
+
     xslice_graph = create_slice(
         x=xslice.index,
         y=xslice.values,
@@ -521,7 +560,8 @@ def update_slices_on_filter_change(
         else:
             if x_val not in dff_denom[xaxis].unique():
                 x_val = int(x_val)  # deal with heatmap coordinates
-            yslice_denom = dff_denom[dff_denom[xaxis] == x_val].groupby(yaxis)[zaxis].mean()
+            yslice_denom = dff_denom[dff_denom[xaxis] == x_val]
+            yslice_denom = yslice_denom.groupby(yaxis)[zaxis].mean()
         yslice = yslice.divide(yslice_denom)
 
     yslice_graph = create_slice(
@@ -547,7 +587,8 @@ def update_slices_on_filter_change(
     if do_aoe == ['Enable']:
         if (x_val is not None) and (y_val is not None):
             xy_val = x_val + y_val
-            xyslice_denom = dff_denom[dff_denom[aa_col] == xy_val].groupby(xaxis)[zaxis].mean()
+            xyslice_denom = dff_denom[dff_denom[aa_col] == xy_val]
+            xyslice_denom = xyslice_denom.groupby(xaxis)[zaxis].mean()
         else:
             xyslice_denom = dff_denom.groupby(aa_col)[zaxis].mean()
         xyslice = xyslice.divide(xyslice_denom)
@@ -574,14 +615,8 @@ def update_slices_on_filter_change(
 
 def create_slice(x, y, title, layout_kwargs=None):
     layout = {
-        'height': 220, #YYY int(MAIN_HEIGHT / 2),
-        'margin': {'l': 24, 'b': 30, 'r': 0, 't': 0},
-        #'annotations': [{
-        #    'x': .1, 'y': 0.85, 'xanchor': 'left', 'yanchor': 'bottom',
-        #    'xref': 'paper', 'yref': 'paper', 'showarrow': False,
-        #    'align': 'left', 'bgcolor': 'rgba(255, 255, 255, 0.5)',
-        #    'text': title
-        #}],
+        'height': SLICE_HEIGHT,
+        'margin': {'l': 24, 'b': 24, 'r': 4, 't': 4},
         'showlegend': True
     }
 
@@ -603,14 +638,15 @@ def create_slice(x, y, title, layout_kwargs=None):
                 'y': [y.mean().round(3)] * len(y),
                 'mode': 'lines',
                 'name': 'mean'
-            }                
+            }
         ],
         'layout': layout
     }
 
 
 @app.callback(
-    [Output(f'denom-col{num}-div', 'style') for num in range(MAX_FEATURE_COLS)],
+    [Output(f'denom-col{num}-div', 'style')
+     for num in range(MAX_FEATURE_COLS)],
     [Input('do-a-over-e', 'value')])
 def enable_denom_filters(do_aoe):
     """Show the denominator-data filters when enabled."""
@@ -622,7 +658,6 @@ def enable_denom_filters(do_aoe):
     to_ret += [{'display': 'none'}] * (MAX_FEATURE_COLS - len(feature_cols))
 
     return to_ret
-
 
 
 # Run the server
