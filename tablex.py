@@ -15,9 +15,9 @@ takes the average zaxis quantity over those features.
 """
 
 import argparse
-import dash
 import re
 
+import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import pandas as pd
@@ -683,7 +683,8 @@ if __name__ == "__main__":
     yaxis = args.yaxis
     zaxis = args.zaxis
     feature_cols = [col for col in df.columns
-                    if col not in [xaxis, yaxis, zaxis]]
+                    if col not in [xaxis, yaxis, zaxis]
+                    and len(df[col].unique()) < .8 * len(df)]
 
     #
     # Look for the Attained Age column, otherwise calculate it
